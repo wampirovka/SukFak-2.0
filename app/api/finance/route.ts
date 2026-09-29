@@ -117,7 +117,7 @@ export async function POST(request: Request) {
         documentNumber: String(body.documentNumber ?? "").trim() || null, description,
         note: String(body.note ?? "").trim() || null, taxDeductible: body.taxDeductible !== false,
       }});
-      await writeAudit(prisma, { companyId: result.member.companyId, userId: result.member.userId, action: "CREATE", entity: "EXPENSE", entityId: expense.id, details: amount.toFixed(2) });
+      await prisma.auditLog.create({ data: { companyId: result.member.companyId, userId: result.member.userId, action: "CREATE", entity: "EXPENSE", entityId: expense.id, details: amount.toFixed(2) } });
       return NextResponse.json({ expense }, { status: 201 });
     }
 
