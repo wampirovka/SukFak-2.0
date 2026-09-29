@@ -17,21 +17,30 @@ export async function GET(request: Request) {
   const year = Number(searchParams.get("year") ?? new Date().getFullYear());
   if (!Number.isInteger(year) || year < 2000 || year > 2200) return NextResponse.json({ error: "Neplatný rok." }, { status: 400 });
   const from = new Date(year, 0, 1); const to = new Date(year + 1, 0, 1);
-  const [invoices, payments, cashDocuments, advanceApplications] = await Promise.all([
+  const [invoices, payments, cashDocuments, advanceApplications, incomes, expenses] = await Promise.all([
     prisma.invoice.findMany({ where: { companyId: membership.companyId, issueDate: { gte: from, lt: to }, type: { not: "ADVANCE" } }, select: { total: true, paidAmount: true, status: true, issueDate: true } }),
     prisma.payment.findMany({ where: { companyId: membership.companyId, paidAt: { gte: from, lt: to } }, select: { amount: true, paidAt: true } }),
     prisma.cashDocument.findMany({ where: { companyId: membership.companyId, date: { gte: from, lt: to } }, select: { amount: true } }),
     prisma.invoiceAdvanceApplication.findMany({ where: { finalInvoice: { companyId: membership.companyId }, createdAt: { gte: from, lt: to } }, select: { amount: true } }),
+    prisma.income.findMany({ where: { companyId: membership.companyId, date: { gte: from, lt: to } }, select: { amount: true, date: true } }),
+    prisma.expense.findMany({ where: { companyId: membership.companyId, date: { gte: from, lt: to } }, select: { amount: true, date: true, taxDeductible: true } }),
   ]);
   const month = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, invoiced: 0, paid: 0 }));
   for (const invoice of invoices) month[new Date(invoice.issueDate).getMonth()].invoiced += Number(invoice.total);
   for (const payment of payments) month[new Date(payment.paidAt).getMonth()].paid += Number(payment.amount);
+  const totalIncome = incomes.reduce((s, x) => s + Number(x.amount), 0);
+  const totalExpense = expenses.reduce((s, x) => s + Number(x.amount), 0);
+  const taxDeductibleExpense = expenses.filter(x => x.taxDeductible).reduce((s, x) => s + Number(x.amount), 0);
   const outstanding = invoices.reduce((s, x) => s + Math.max(0, Number(x.total) - Number(x.paidAmount)), 0);
   const overdue = invoices.filter(x => effectiveInvoiceStatus(x) === "OVERDUE").reduce((s, x) => s + Math.max(0, Number(x.total) - Number(x.paidAmount)), 0);
   return NextResponse.json({
     year,
     totalInvoiced: invoices.reduce((s, x) => s + Number(x.total), 0),
     totalPaid: payments.reduce((s, x) => s + Number(x.amount), 0),
+    totalIncome,
+    totalExpense,
+    taxDeductibleExpense,
+    taxEvidenceBalance: totalIncome - totalExpense,
     outstanding,
     overdue,
     cash: cashDocuments.reduce((s, x) => s + Number(x.amount), 0),
