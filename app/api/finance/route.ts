@@ -2,7 +2,6 @@ import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { writeAudit } from "@/lib/audit";
 
 async function membership() {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -107,7 +106,7 @@ export async function POST(request: Request) {
           method: ["BANK_TRANSFER","CASH","CARD","OTHER"].includes(String(body.method)) ? String(body.method) as any : "BANK_TRANSFER",
           documentNumber: String(body.documentNumber ?? "").trim() || null, description, note: String(body.note ?? "").trim() || null,
         }});
-        await writeAudit(prisma, { companyId: result.member.companyId, userId: result.member.userId, action: "CREATE", entity: "INCOME", entityId: income.id, details: amount.toFixed(2) });
+        await prisma.auditLog.create({ data: { companyId: result.member.companyId, userId: result.member.userId, action: "CREATE", entity: "INCOME", entityId: income.id, details: amount.toFixed(2) } });
         return NextResponse.json({ income }, { status: 201 });
       }
 
