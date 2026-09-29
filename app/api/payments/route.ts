@@ -5,6 +5,27 @@ import { prisma } from "@/lib/prisma";
 import { writeAudit } from "@/lib/audit";
 import { reserveNumber } from "@/lib/numbering";
 
+async function ensurePaymentIncome(tx: any, companyId: string, payment: { id: string; invoiceId: string; amount: any; paidAt: Date; method: string; note: string | null }, invoice: { number: string | null; customerId: string | null }) {
+  const direction = "INCOME";
+  const category = await tx.financeCategory.upsert({
+    where: { companyId_name_direction: { companyId, name: "Služby", direction } },
+    update: {},
+    create: { companyId, name: "Služby", direction },
+  });
+  const accountType = payment.method === "CASH" ? "CASH" : "BANK";
+  let account = await tx.financialAccount.findFirst({ where: { companyId, type: accountType, isActive: true }, orderBy: { createdAt: "asc" } });
+  if (!account) {
+    account = await tx.financialAccount.create({
+      data: { companyId, name: accountType === "CASH" ? "Pokladna" : "Hlavní bankovní účet", type: accountType },
+    });
+  }
+  return tx.income.upsert({
+    where: { paymentId: payment.id },
+    update: { accountId: account.id, categoryId: category.id, invoiceId: payment.invoiceId, customerId: invoice.customerId, date: payment.paidAt, amount: payment.amount, method: payment.method, documentNumber: invoice.number, description: invoice.number ? `Úhrada faktury ${invoice.number}` : "Úhrada faktury", note: payment.note },
+    create: { companyId, accountId: account.id, categoryId: category.id, paymentId: payment.id, invoiceId: payment.invoiceId, customerId: invoice.customerId, date: payment.paidAt, amount: payment.amount, method: payment.method, documentNumber: invoice.number, description: invoice.number ? `Úhrada faktury ${invoice.number}` : "Úhrada faktury", note: payment.note },
+  });
+}
+
 async function getMembership() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) return null;
@@ -64,6 +85,7 @@ export async function POST(request: Request) {
       });
 
       await tx.invoice.update({ where: { id: invoice.id }, data: { paidAmount: newPaid, status } });
+      await ensurePaymentIncome(tx, membership.companyId, created, invoice);
 
       if (method === "CASH") {
         const number = await reserveNumber(tx, membership.companyId, "CASH_DOCUMENT", paidAt.getFullYear());
