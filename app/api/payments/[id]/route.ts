@@ -4,6 +4,22 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { writeAudit } from "@/lib/audit";
 
+async function syncPaymentIncome(tx: any, companyId: string, payment: { id: string; invoiceId: string; amount: any; paidAt: Date; method: string; note: string | null }, invoice: { number: string | null; customerId: string | null }) {
+  const category = await tx.financeCategory.upsert({
+    where: { companyId_name_direction: { companyId, name: "Služby", direction: "INCOME" } },
+    update: {},
+    create: { companyId, name: "Služby", direction: "INCOME" },
+  });
+  const accountType = payment.method === "CASH" ? "CASH" : "BANK";
+  let account = await tx.financialAccount.findFirst({ where: { companyId, type: accountType, isActive: true }, orderBy: { createdAt: "asc" } });
+  if (!account) account = await tx.financialAccount.create({ data: { companyId, name: accountType === "CASH" ? "Pokladna" : "Hlavní bankovní účet", type: accountType } });
+  return tx.income.upsert({
+    where: { paymentId: payment.id },
+    update: { accountId: account.id, categoryId: category.id, invoiceId: payment.invoiceId, customerId: invoice.customerId, date: payment.paidAt, amount: payment.amount, method: payment.method, documentNumber: invoice.number, description: invoice.number ? `Úhrada faktury ${invoice.number}` : "Úhrada faktury", note: payment.note },
+    create: { companyId, accountId: account.id, categoryId: category.id, paymentId: payment.id, invoiceId: payment.invoiceId, customerId: invoice.customerId, date: payment.paidAt, amount: payment.amount, method: payment.method, documentNumber: invoice.number, description: invoice.number ? `Úhrada faktury ${invoice.number}` : "Úhrada faktury", note: payment.note },
+  });
+}
+
 async function getMembership() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) return null;
@@ -45,6 +61,7 @@ export async function DELETE(_request: Request, context: { params: Promise<{ id:
           : newPaid > 0.005 ? "PARTIALLY_PAID" : "ISSUED";
 
       if (payment.cashDocument) await tx.cashDocument.delete({ where: { id: payment.cashDocument.id } });
+      await tx.income.deleteMany({ where: { paymentId: payment.id } });
       await tx.payment.delete({ where: { id: payment.id } });
       await tx.invoice.update({ where: { id: payment.invoiceId }, data: { paidAmount: newPaid, status } });
       await writeAudit(tx, {
@@ -128,6 +145,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       }
 
       await tx.invoice.update({ where: { id: existing.invoiceId }, data: { paidAmount: newPaid, status } });
+      await syncPaymentIncome(tx, result!.companyId, updated, existing.invoice);
       await writeAudit(tx, { companyId: result!.companyId, userId: result!.userId, action: "UPDATE", entity: "PAYMENT", entityId: existing.id, details: amount.toFixed(2) });
 
       return tx.payment.findUnique({
