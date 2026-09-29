@@ -74,6 +74,7 @@ model Income {
   account  FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
   category FinanceCategory  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   invoice  Invoice?         @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  payment  Payment?         @relation(fields: [paymentId], references: [id], onDelete: SetNull)
   customer Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
   @@index([companyId, date])
@@ -390,6 +391,7 @@ model Payment {
   company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   invoice      Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   cashDocument CashDocument?
+  income       Income?
 
   @@index([companyId, paidAt])
   @@index([invoiceId])
