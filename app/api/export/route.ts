@@ -15,6 +15,10 @@ const ENTITY_KEYS = [
   "advanceApplications",
   "numberingSeries",
   "auditLog",
+  "financialAccounts",
+  "financeCategories",
+  "incomes",
+  "expenses",
 ] as const;
 
 type EntityKey = (typeof ENTITY_KEYS)[number];
@@ -30,6 +34,10 @@ const entityLabels: Record<EntityKey, string> = {
   advanceApplications: "Vypořádání záloh",
   numberingSeries: "Číselné řady",
   auditLog: "Auditní log",
+  financialAccounts: "Bankovní účty a pokladny",
+  financeCategories: "Kategorie příjmů a výdajů",
+  incomes: "Příjmy",
+  expenses: "Výdaje",
 };
 
 function jsonData(value: unknown) {
@@ -81,6 +89,10 @@ export async function GET(request: Request) {
     members: ["company"],
     customers: ["company"],
     auditLog: ["company"],
+    financialAccounts: ["company"],
+    financeCategories: ["company"],
+    incomes: ["company", "financialAccounts", "financeCategories"],
+    expenses: ["company", "financialAccounts", "financeCategories"],
   };
   const entitySet = new Set<EntityKey>(requested);
   for (const entity of requested) {
@@ -89,7 +101,7 @@ export async function GET(request: Request) {
   const entities = [...entitySet];
   const companyId = membership.companyId;
 
-  const [company, members, customers, invoices, numberingSeries] = await Promise.all([
+  const [company, members, customers, invoices, numberingSeries, financialAccounts, financeCategories, incomes, expenses] = await Promise.all([
     entities.includes("company")
       ? prisma.company.findUnique({ where: { id: companyId } })
       : null,
@@ -105,6 +117,10 @@ export async function GET(request: Request) {
     entities.includes("numberingSeries")
       ? prisma.numberingSeries.findMany({ where: { companyId }, orderBy: [{ year: "asc" }, { type: "asc" }] })
       : [],
+    entities.includes("financialAccounts") ? prisma.financialAccount.findMany({ where: { companyId }, orderBy: { createdAt: "asc" } }) : [],
+    entities.includes("financeCategories") ? prisma.financeCategory.findMany({ where: { companyId }, orderBy: [{ direction: "asc" }, { name: "asc" }] }) : [],
+    entities.includes("incomes") ? prisma.income.findMany({ where: { companyId }, orderBy: { date: "asc" } }) : [],
+    entities.includes("expenses") ? prisma.expense.findMany({ where: { companyId }, orderBy: { date: "asc" } }) : [],
   ]);
 
   const invoiceIds = invoices.map((invoice) => invoice.id);
@@ -151,6 +167,10 @@ export async function GET(request: Request) {
         key === "cashDocuments" ? cashDocuments.length :
         key === "advanceApplications" ? advanceApplications.length :
         key === "numberingSeries" ? numberingSeries.length :
+        key === "financialAccounts" ? financialAccounts.length :
+        key === "financeCategories" ? financeCategories.length :
+        key === "incomes" ? incomes.length :
+        key === "expenses" ? expenses.length :
         auditLog.length,
     })),
     excludedFromExport: ["User", "Session", "Account", "Verification"],
@@ -170,6 +190,10 @@ export async function GET(request: Request) {
   if (entities.includes("advanceApplications")) files["advanceApplications.json"] = jsonData(advanceApplications);
   if (entities.includes("numberingSeries")) files["numberingSeries.json"] = jsonData(numberingSeries);
   if (entities.includes("auditLog")) files["auditLog.json"] = jsonData(auditLog);
+  if (entities.includes("financialAccounts")) files["financialAccounts.json"] = jsonData(financialAccounts);
+  if (entities.includes("financeCategories")) files["financeCategories.json"] = jsonData(financeCategories);
+  if (entities.includes("incomes")) files["incomes.json"] = jsonData(incomes);
+  if (entities.includes("expenses")) files["expenses.json"] = jsonData(expenses);
 
   await prisma.auditLog.create({
     data: {
