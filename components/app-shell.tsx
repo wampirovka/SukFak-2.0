@@ -11,6 +11,7 @@ const primaryNavigation = [
   ["▣", "Zálohy", "/zalohy"],
   ["↔", "Úhrady", "/uhrady"],
   ["▥", "Pokladna", "/pokladna"],
+  ["◈", "Daňová evidence", "/finance"],
   ["♙", "Zákazníci", "/zakaznici"],
 ];
 
