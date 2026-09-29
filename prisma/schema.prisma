@@ -7,6 +7,104 @@ datasource db {
   provider = "postgresql"
 }
 
+enum FinancialAccountType {
+  BANK
+  CASH
+}
+
+enum FinanceDirection {
+  INCOME
+  EXPENSE
+}
+
+model FinancialAccount {
+  id             String               @id @default(cuid())
+  companyId      String
+  name           String
+  type           FinancialAccountType
+  accountNumber  String?
+  bankCode       String?
+  openingBalance Decimal              @default(0) @db.Decimal(15, 2)
+  isActive       Boolean              @default(true)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  incomes  Income[]
+  expenses Expense[]
+
+  @@index([companyId, isActive])
+}
+
+model FinanceCategory {
+  id            String          @id @default(cuid())
+  companyId     String
+  name          String
+  direction     FinanceDirection
+  taxDeductible Boolean         @default(true)
+  isActive      Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  incomes  Income[]
+  expenses Expense[]
+
+  @@unique([companyId, name, direction])
+  @@index([companyId, direction, isActive])
+}
+
+model Income {
+  id             String        @id @default(cuid())
+  companyId      String
+  accountId      String
+  categoryId     String
+  invoiceId      String?
+  customerId     String?
+  date           DateTime      @default(now())
+  amount         Decimal       @db.Decimal(15, 2)
+  method         PaymentMethod @default(BANK_TRANSFER)
+  documentNumber String?
+  description    String
+  note           String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  company  Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  account  FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  category FinanceCategory  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  invoice  Invoice?         @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  customer Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, date])
+  @@index([companyId, categoryId])
+  @@index([invoiceId])
+}
+
+model Expense {
+  id             String        @id @default(cuid())
+  companyId      String
+  accountId      String
+  categoryId     String
+  date           DateTime      @default(now())
+  amount         Decimal       @db.Decimal(15, 2)
+  method         PaymentMethod @default(BANK_TRANSFER)
+  supplierName   String?
+  documentNumber String?
+  description    String
+  note           String?
+  taxDeductible  Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  company  Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  account  FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  category FinanceCategory  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@index([companyId, date])
+  @@index([companyId, categoryId])
+}
+
 enum CompanyRole {
   OWNER
   ADMIN
@@ -93,6 +191,10 @@ model Company {
   payments        Payment[]
   cashDocuments   CashDocument[]
   auditLogs       AuditLog[]
+  financialAccounts FinancialAccount[]
+  financeCategories FinanceCategory[]
+  incomes          Income[]
+  expenses         Expense[]
 
   @@index([ico])
 }
@@ -148,6 +250,7 @@ model Customer {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
   invoices  Invoice[]
+  incomes   Income[]
 
   company   Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
@@ -240,6 +343,7 @@ model Invoice {
   customer               Customer?                   @relation(fields: [customerId], references: [id], onDelete: SetNull)
   items                  InvoiceItem[]
   payments               Payment[]
+  incomes                Income[]
   advanceApplications    InvoiceAdvanceApplication[] @relation("FinalInvoiceAdvance")
   appliedToFinalInvoices InvoiceAdvanceApplication[] @relation("AdvanceInvoiceApplications")
 
